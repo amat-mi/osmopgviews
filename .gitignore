@@ -1,0 +1,6 @@
+00-config*.sh
+01b*.sh
+04-*.sh
+*.pyc
+*.qgs*
+sql/
