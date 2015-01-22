@@ -19,10 +19,10 @@ First, create a database suitable for osmosis:
     # on the newly created db
     /path/to/osmosis/init_osmosis.sh
 
-Create a config file based on config_example.sh, say "config.sh".
-Edit the 01-download_osm_xml.sh script and adapt the overpass query to your needs.
-Edit the 03-export_osmosis_pg.sh if you don't need to export the views or you need them exported in a format other than MapInfo.
-Change or add views definitions in the views subfolder.
+* Create a config file based on config_example.sh, say "config.sh".
+* Edit the 01-download_osm_xml.sh script and adapt the overpass query to your needs.
+* Edit the 03-export_osmosis_pg.sh if you don't need to export the views or you need them exported in a format other than MapInfo.
+* Change or add views definitions in the views subfolder.
 
 Run the scripts:
 
