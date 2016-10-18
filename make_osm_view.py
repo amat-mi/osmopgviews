@@ -153,7 +153,7 @@ class RawView(object):
             widths[field_raw] = width
             field = field_raw.replace(':','__')
             if self.use_hstore:
-                fields.append("{table}.tags -> '{field}' as {field}".format(field=field, table=self.geom_table))
+                fields.append("{table}.tags -> '{field_raw}' as {field}".format(field=field, table=self.geom_table, field_raw=field_raw))
             else:
                 fields.append('{field}.v as {field}'.format(field=field))
                 join_tpl = "{join_type} join {tags} as {field} on {table}.{tag_id} = {field}.{tag_id} and {field}.k = '{field_raw}'"
