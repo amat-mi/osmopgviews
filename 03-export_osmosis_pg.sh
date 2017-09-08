@@ -1,7 +1,7 @@
 #! /bin/bash 
 
 # Create the views
-VIEWS="aree_pedonali crossing highway locref_no_tags multipoly_ways subway subway_entrance subway_station traffic_sign tram pedestrian"
+VIEWS="aree_pedonali crossing highway locref_no_tags multipoly_ways subway subway_entrance subway_station traffic_sign tram pedestrian stops"
 # turn_restrictions 
 
 for VIEW in $VIEWS
