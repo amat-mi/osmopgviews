@@ -41,12 +41,13 @@ DB_CONF = {
 }
 class RawView(object):
     
-    def __init__(self, name, db_config='', view_schema=None, data_schema='public'):
+    def __init__(self, name, options, db_config=''):
         self.name = name
         self.db_config = db_config
         self.filename = self.build_ini_filename()
-        self.view_schema = view_schema
-        self.data_schema = data_schema
+        self.view_schema = options['view_schema']
+        self.data_schema = options['data_schema']
+        self.materialized = self.get_bool_from_str(options['materialized'])
         try:
             self.load_from_ini(self.filename)
         except Exception, e:
@@ -80,7 +81,8 @@ class RawView(object):
         self.meta = self.get_list_from_str(config.get('meta', ''))
         self.default_char_len = config.get('default_char_len', '30')
         self.active = self.get_bool_from_str(config.get('active', '1'))
-        self.materialized = self.get_bool_from_str(config.get('materialized', '0'))
+        if 'materialized' in config:
+            self.materialized = self.get_bool_from_str(config.get('materialized', '0'))
         
         if self.data_schema:
             self.data_schema = '%s.' % self.data_schema.rstrip('.')
@@ -111,7 +113,9 @@ class RawView(object):
             
             
     def get_bool_from_str(self, s):
-        return not s.lower() in ('no', 'n', '0', 'off', 'false', 'x', 'f')
+        if not s:
+            return False
+        return not str(s).lower() in ('no', 'n', '0', 'off', 'false', 'x', 'f')
         
             
     def parse_ini_file(self, filename):
@@ -193,13 +197,12 @@ class RawView(object):
         
         
     def drop(self, materialized=''):
-        return 'drop %s if exists %s.%s cascade;' % (self.view_type(), self.view_schema, self.view_name)
+        return 'drop %s view if exists %s.%s cascade;' % (materialized, self.view_schema, self.view_name)
         
         
     def translate_sql(self, sql):
         return sql.format(
             view_type=self.view_type(), 
-            view_type_grant=self.view_type_grant(), 
             view_name='%s.%s' % (self.view_schema, self.view_name)
         )
         
@@ -214,5 +217,5 @@ if __name__ == '__main__':
     except:
         print "Usage: %s <view> [spatialite|osmosis_pg]" % sys.argv[0]
         quit()
-    rview = RawView(view, db_config=db_config)
+    rview = RawView(view, {'materialized': 0}, db_config=db_config)
     print rview.build_sql()
