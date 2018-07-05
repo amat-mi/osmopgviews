@@ -9,10 +9,12 @@ def db_connect(conf):
     cur = connection.cursor()
     return (cur, connection)
     
-def make_views(conf, view_schema):
+def make_views(conf, view_schema, data_schema):
+    post_sql = conf.pop('post_sql', '')
     (cur, connection) = db_connect(conf)
+  
     for viewfile in RawView.list_view_files():
-        view = RawView(viewfile, db_config='osmosis_pg', view_schema=view_schema)
+        view = RawView(viewfile, db_config='osmosis_pg', view_schema=view_schema, data_schema=data_schema)
         if view.active:
             # "drop view" won't work on a materialized view
             try:
@@ -25,6 +27,8 @@ def make_views(conf, view_schema):
                 cur.execute(view.drop('materialized'))
             status = 'MATERIALIZED' if view.materialized else 'VIEW'
             cur.execute(view.create())
+            if post_sql:
+                cur.execute(view.translate_sql(post_sql))
         else:
             status = 'skip'
         connection.commit()
@@ -39,11 +43,13 @@ if __name__ == '__main__':
             'database'   : os.environ['DB_NAME'],
             'user'       : os.environ['DB_USERNAME'],
             'password'   : os.environ['DB_PASSWORD'],
+            'post_sql'   : os.environ.get('POST_SQL', ''),
         }
         
-        schema = os.environ.get('DB_SCHEMA', 'public')
-        print "Creating views in %s schema..." % schema
-        make_views(dbconf, schema)
+        data_schema = os.environ.get('DB_SCHEMA', 'public')
+        view_schema = os.environ.get('DB_VIEW_SCHEMA', 'osm_views')
+        print "Creating views in %s schema from data in %s..." % (view_schema, data_schema)
+        make_views(dbconf, view_schema, data_schema)
 
     except KeyError, e:
         print "You need to export DB_* variables before calling this script."

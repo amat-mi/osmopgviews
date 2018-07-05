@@ -25,27 +25,28 @@ DB_CONF = {
     'osmosis_pg' : {
         'node' : {
             'geom_table' : 'nodes',
-            'tags_table' : 'node_tags',
-            'tags_fk'    : 'id',
             'geom_field' : 'geom',
             'use_hstore' : True,
+            'tags_table' : 'node_tags',
+            'tags_fk'    : 'id',
         },
         'way' : {
             'geom_table' : 'ways',
-            'tags_table' : 'way_tags',
-            'tags_fk'    : 'id',
             'geom_field' : 'linestring',
             'use_hstore' : True,
+            'tags_table' : 'way_tags',
+            'tags_fk'    : 'id',
         },
     }
 }
 class RawView(object):
     
-    def __init__(self, name, db_config='', view_schema=None):
+    def __init__(self, name, db_config='', view_schema=None, data_schema='public'):
         self.name = name
         self.db_config = db_config
         self.filename = self.build_ini_filename()
         self.view_schema = view_schema
+        self.data_schema = data_schema
         try:
             self.load_from_ini(self.filename)
         except Exception, e:
@@ -77,14 +78,12 @@ class RawView(object):
         self.view_name=config.get('view_name', self.name)
         self.description=config.get('description', '')
         self.meta = self.get_list_from_str(config.get('meta', ''))
-        self.schema = 'public'
-        self.view_schema = config.get('schema', self.view_schema)
         self.default_char_len = config.get('default_char_len', '30')
         self.active = self.get_bool_from_str(config.get('active', '1'))
         self.materialized = self.get_bool_from_str(config.get('materialized', '0'))
         
-        if self.schema:
-            self.schema = '%s.' % self.schema.rstrip('.')
+        if self.data_schema:
+            self.data_schema = '%s.' % self.data_schema.rstrip('.')
         
         
         self.geom_class=config['geom_class']
@@ -166,7 +165,7 @@ class RawView(object):
             sql_where = 'where (%s)' % ' and '.join(["(%s)" % w for w in wheres])
         else:
             sql_where = ''
-        sql = 'select {table}.{fk}, {meta_fields}{table}.{geom_field}, {fields} from {schema}{table} {joins} {sql_where}'.format(fk=self.tags_fk, fields=','.join(fields),table=self.geom_table,joins=' '.join(joins), meta_fields=mft, schema=self.schema, geom_field=self.geom_field, sql_where=sql_where)
+        sql = 'select {table}.{fk}, {meta_fields}{table}.{geom_field}, {fields} from {schema}{table} {joins} {sql_where}'.format(fk=self.tags_fk, fields=','.join(fields),table=self.geom_table,joins=' '.join(joins), meta_fields=mft, schema=self.data_schema, geom_field=self.geom_field, sql_where=sql_where)
         if self.where:
             mft = ', '.join([self.pg_field(mfld) for mfld in self.meta])
             if mft != '':
@@ -184,17 +183,25 @@ class RawView(object):
         return fldc[0]
         
         
+    def view_type(self):
+        return 'materialized view' if self.materialized else 'view'
+        
     def create(self):
-        materialized = 'materialized' if self.materialized else ''
         if self.active:
-            return "create %s view %s.%s as (%s);" % (materialized, self.view_schema, self.view_name, self.build_sql())
+            return "create %s %s.%s as (%s);" % (self.view_type(), self.view_schema, self.view_name, self.build_sql())
         return ''
         
         
     def drop(self, materialized=''):
-        if materialized:
-            materialized = 'materialized'
-        return 'drop %s view if exists %s.%s cascade;' % (materialized, self.view_schema, self.view_name)
+        return 'drop %s if exists %s.%s cascade;' % (self.view_type(), self.view_schema, self.view_name)
+        
+        
+    def translate_sql(self, sql):
+        return sql.format(
+            view_type=self.view_type(), 
+            view_type_grant=self.view_type_grant(), 
+            view_name='%s.%s' % (self.view_schema, self.view_name)
+        )
         
         
 if __name__ == '__main__':
