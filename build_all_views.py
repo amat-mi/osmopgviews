@@ -1,4 +1,5 @@
-#! /usr/bin/python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import os
 import psycopg2
@@ -13,14 +14,14 @@ def make_views(conf):
     connection_options = conf['connect']
     (cur, connection) = db_connect(connection_options)
     options = conf['options']
-    print "Creating views in schema:%s from data in schema:%s..." % (options['view_schema'], options['data_schema'])
+    print("Creating views in schema:%s from data in schema:%s..." % (options['view_schema'], options['data_schema']))
   
     for viewfile in RawView.list_view_files():
         view = RawView(viewfile, options, db_config='osmosis_pg')
         if view.active:
             # "drop view" won't work on a materialized view
             try:
-                print view.drop()
+                print(view.drop())
                 cur.execute(view.drop())
             except:
                 connection.rollback()
@@ -35,7 +36,7 @@ def make_views(conf):
         else:
             status = 'skip'
         connection.commit()
-        print '%s [%s]' % (view.view_name, status)
+        print('%s [%s]' % (view.view_name, status))
     
         
 if __name__ == '__main__':
@@ -58,11 +59,11 @@ if __name__ == '__main__':
         
         make_views(dbconf)
 
-    except KeyError, e:
-        print "You need to export DB_* variables before calling this script."
-        print "%s environment variable not found." % str(e)
+    except KeyError as e:
+        print("You need to export DB_* variables before calling this script.")
+        print("%s environment variable not found." % str(e))
         quit()
         
-    except Exception, e:
-        print str(e)
+    except Exception as e:
+        print(str(e))
         

@@ -1,4 +1,5 @@
-#! /usr/bin/python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import sys
 import os.path
@@ -50,7 +51,7 @@ class RawView(object):
         self.materialized = self.get_bool_from_str(options['materialized'])
         try:
             self.load_from_ini(self.filename)
-        except Exception, e:
+        except Exception as e:
             raise Exception("Error parsing %s\n%s" % (self.filename, str(e)))
 
 
@@ -223,7 +224,7 @@ if __name__ == '__main__':
         else:
             db_config = 'spatialite'
     except:
-        print "Usage: %s <view> [spatialite|osmosis_pg]" % sys.argv[0]
+        print("Usage: %s <view> [spatialite|osmosis_pg]" % sys.argv[0])
         quit()
     rview = RawView(view, {'materialized': 0}, db_config=db_config)
-    print rview.build_sql()
+    print(rview.build_sql())
