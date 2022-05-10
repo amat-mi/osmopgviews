@@ -4,6 +4,17 @@
 import sys
 import os.path
 import glob
+import psycopg2
+import fnmatch
+
+"""
+# Rebuild all
+./osm_views
+
+# Rebuild footway views
+./osm_views 'footway*'
+
+"""
 
 DB_CONF = {
     'spatialite' : {
@@ -40,9 +51,11 @@ DB_CONF = {
         },
     }
 }
+        
+        
 class RawView(object):
 
-    def __init__(self, name, options, db_config=''):
+    def __init__(self, name, options, db_config='osmosis_pg'):
         self.name = name
         self.db_config = db_config
         self.filename = self.build_ini_filename()
@@ -63,7 +76,7 @@ class RawView(object):
     @classmethod
     def list_view_files(cls):
         for viewfile in glob.glob(os.path.join(cls.get_view_folder(), '*.ini')):
-            yield viewfile[:-4]
+            yield os.path.basename(viewfile)[:-4]
 
 
     def build_ini_filename(self):
@@ -215,16 +228,78 @@ class RawView(object):
             view_name='%s.%s' % (self.view_schema, self.view_name)
         )
 
+def db_connect(conf):
+    connection = psycopg2.connect(**conf)
+    cur = connection.cursor()
+    return (cur, connection)
+
+
+def make_views(conf, view_mask):
+    connection_options = conf['connect']
+    (cur, connection) = db_connect(connection_options)
+    options = conf['options']
+    print("Creating views in schema:%s from data in schema:%s..." % (options['view_schema'], options['data_schema']))
+    views = list(RawView.list_view_files())
+    print(views)
+    if view_mask:
+        views = fnmatch.filter(views, view_mask)
+        print(views)
+  
+    for viewfile in views:
+        view = RawView(viewfile, options, db_config='osmosis_pg')
+        if view.active:
+            # "drop view" won't work on a materialized view
+            try:
+                print(view.drop())
+                cur.execute(view.drop())
+            except:
+                connection.rollback()
+                cur.close()
+                connection.close()
+                (cur, connection) = db_connect(connection_options)
+                cur.execute(view.drop('materialized'))
+            status = 'MATERIALIZED' if view.materialized else 'VIEW'
+            cur.execute(view.create())
+            if options['post_sql']:
+                cur.execute(view.translate_sql(options['post_sql']))
+        else:
+            status = 'skip'
+        connection.commit()
+        print('%s [%s]' % (view.view_name, status))
+
+
 
 if __name__ == '__main__':
+
     try:
-        view = sys.argv[1]
-        if len(sys.argv) > 2:
-            db_config = sys.argv[2]
-        else:
-            db_config = 'spatialite'
-    except:
-        print("Usage: %s <view> [spatialite|osmosis_pg]" % sys.argv[0])
+        dbconf =  {
+            'connect' : {
+                'host'       : os.environ['DB_HOST'],
+                'port'       : os.environ.get('DB_PORT', '5432'),
+                'database'   : os.environ['DB_NAME'],
+                'user'       : os.environ['DB_USERNAME'],
+                'password'   : os.environ['DB_PASSWORD'],
+            },
+            'options' : {
+                'post_sql'       : os.environ.get('POST_SQL', ''),
+                'materialized'   : os.environ.get('MATERIALIZED', 0),
+                'data_schema'    : os.environ.get('DB_SCHEMA', 'public'),
+                'view_schema'    : os.environ.get('DB_VIEW_SCHEMA', 'osm_views'),
+            }
+        }
+        
+        view_mask = sys.argv[1] if len(sys.argv) > 1 else None
+        # TODO parseargs
+        #   - view sql
+        #   - refresh materialized
+        #   - drop / (re)create
+        make_views(dbconf, view_mask)
+
+    except KeyError as e:
+        print("You need to export DB_* variables before calling this script.")
+        print("%s environment variable not found." % str(e))
         quit()
-    rview = RawView(view, {'materialized': 0}, db_config=db_config)
-    print(rview.build_sql())
+        
+    except Exception as e:
+        print(str(e))
+    
