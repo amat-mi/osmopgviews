@@ -60,24 +60,24 @@ class App(object):
     COMMANDS = ('list', 'info', 'drop', 'create', 'sql')
 
     HELP_EPILOG = """
-    # ESEMPI DI UTILIZZO
-    
-    # Elenca le viste definite
-    ./osm_views.py list
-    
-    # Mostra i dettagli sulle viste definite il cui nome comincia con highway
-    ./osm_views.py info --views 'highway*'
-    
-    # Elimina tutte le viste configurate, materializzate e non, nello schema specificato
-    ./osm_views.py drop --schema=osm_views --view='*'
-    
-    # (Ri)crea le viste configurate il cui nome comincia con highway, nello schema specificato
-    ./osm_views.py create --schema=osm_views --view='highway*'
+# ESEMPI DI UTILIZZO
 
-    # Come sopra, ma crea le viste materializzate
-    ./osm_views.py create --schema=osm_views_mat --materialized --view='highway*'
-    
-    """
+# Elenca le viste definite
+./osm_views.py list
+
+# Mostra i dettagli sulle viste definite il cui nome comincia con highway
+./osm_views.py info --views 'highway*'
+
+# Elimina tutte le viste configurate, materializzate e non, nello schema specificato
+./osm_views.py drop --schema=osm_views --view='*'
+
+# (Ri)crea le viste configurate il cui nome comincia con highway, nello schema specificato
+./osm_views.py create --schema=osm_views --view='highway*'
+
+# Come sopra, ma crea le viste materializzate
+./osm_views.py create --schema=osm_views_mat --materialized --view='highway*'
+
+"""
 
     
     def __init__(self):
@@ -87,7 +87,6 @@ class App(object):
     def run(self):
 #        try:
             self.parse_args()
-            self.connect_db()
             self.get_views()
             self.execute_command()
 #        except Exception as e:
@@ -164,20 +163,25 @@ class App(object):
 
         
     def execute_command(self):
-        print("Processing views in schema:%s from data in schema:%s..." % (
-                self.args.view_schema, self.args.data_schema)
-        )
         command = self.args.command
+        if command in ('drop', 'create'):
+            print("Processing views in schema:%s from data in schema:%s..." % (
+                    self.args.view_schema, self.args.data_schema)
+            )
+            self.connect_db()
         for v in self.iter_views():
             if command == 'list':
                 print(v.name)
             elif command == 'info':
                 print(v)
             else:
-                if command in ('drop', 'create'):
-                    self.drop_view(v)
-                if command == 'create':
-                    self.create_view(v)
+                if command == 'sql':
+                    print(v.create())
+                else:
+                    if command in ('drop', 'create'):
+                        self.drop_view(v)
+                    if command == 'create':
+                        self.create_view(v)
 
                     
 
