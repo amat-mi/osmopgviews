@@ -1,11 +1,12 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys
 import os.path
 import glob
 import psycopg2
 import fnmatch
+import argparse
+
 
 """
 # Rebuild all
@@ -16,8 +17,7 @@ import fnmatch
 
 """
 
-DB_CONF = {
-    'spatialite' : {
+DB_CONF_SPATIALITE = {
         'node' : {
             'geom_table' : 'osm_nodes',
             'tags_table' : 'osm_node_tags',
@@ -32,9 +32,9 @@ DB_CONF = {
             'geom_field' : 'geom',
             'use_hstore' : False,
         },
-    },
+}
 
-    'osmosis_pg' : {
+DB_CONF_OSMOSIS = {
         'node' : {
             'geom_table' : 'nodes',
             'geom_field' : 'geom',
@@ -49,24 +49,190 @@ DB_CONF = {
             'tags_table' : 'way_tags',
             'tags_fk'    : 'id',
         },
-    }
 }
+
         
+
+class App(object):
+    """
+    Application 
+    """
+    COMMANDS = ('list', 'info', 'drop', 'create', 'sql')
+
+    HELP_EPILOG = """
+    # ESEMPI DI UTILIZZO
+    
+    # Elenca le viste definite
+    ./osm_views.py list
+    
+    # Mostra i dettagli sulle viste definite il cui nome comincia con highway
+    ./osm_views.py info --views 'highway*'
+    
+    # Elimina tutte le viste configurate, materializzate e non, nello schema specificato
+    ./osm_views.py drop --schema=osm_views --view='*'
+    
+    # (Ri)crea le viste configurate il cui nome comincia con highway, nello schema specificato
+    ./osm_views.py create --schema=osm_views --view='highway*'
+
+    # Come sopra, ma crea le viste materializzate
+    ./osm_views.py create --schema=osm_views_mat --materialized --view='highway*'
+    
+    """
+
+    
+    def __init__(self):
+        pass
+
+
+    def run(self):
+#        try:
+            self.parse_args()
+            self.connect_db()
+            self.get_views()
+            self.execute_command()
+#        except Exception as e:
+#            print(str(e))
+#            exit(1)    
+    
+        
+    def parse_args(self):
+        parser = argparse.ArgumentParser(
+            description='Gestisce le viste sui dati OSM caricati da osmosis'
+        )
+        parser.epilog = App.HELP_EPILOG
+        parser.formatter_class = argparse.RawDescriptionHelpFormatter
+        
+        parser.add_argument('command', choices=App.COMMANDS,
+            help="Comando da eseguire")
+        
+        parser.add_argument('--spatialite', action='store_true',
+            dest='spatialite', help="Utilizza un DB spatialite anziché PostGIS"
+        )
+        parser.add_argument('--materialized', action='store_true',
+            dest='materialized', help="Utilizza viste materializzate"
+        )
+        parser.add_argument('--view_schema', action='store', default='osm_views',
+            dest='view_schema', help="Nome dello schema delle viste"
+        )
+        parser.add_argument('--data_schema', action='store', default='public',
+            dest='data_schema', help="Nome dello schema che contiene i dati osmosis"
+        )
+        parser.add_argument('--views', action='store', default='*', 
+            dest='views', help="Vista/e da elaborare; si possono usare i caratteri jolly * e ?"
+        )
+        parser.add_argument('--post-sql', action='store', default='', 
+            dest='post_sql', help="Codice SQL da eseguire al termine delle operazioni"
+        )
+        
+        self.args, self.extras = parser.parse_known_args()
+        self.args.__dict__['db_config'] = DB_CONF_SPATIALITE if self.args.spatialite else DB_CONF_OSMOSIS
+            
+        
+        
+    def connect_db(self):
+        try:
+            self.db_conn_config =  {
+                    'host'       : os.environ['DB_HOST'],
+                    'port'       : os.environ.get('DB_PORT', '5432'),
+                    'database'   : os.environ['DB_NAME'],
+                    'user'       : os.environ['DB_USERNAME'],
+                    'password'   : os.environ['DB_PASSWORD'],
+            }
+            self.connection = psycopg2.connect(**self.db_conn_config)
+            self.cur = self.connection.cursor()       
+        except KeyError as e:
+            print("You need to export DB_* variables before calling this script.")
+            print("%s environment variable not found." % str(e))
+            quit()
+            
+
+    def get_views(self):
+        """
+        Determina su quali viste lavorare; richiesta da tutti i comandi
+        """
+        self.views = list(RawView.list_view_files())
+        if self.args.views:
+            self.views = fnmatch.filter(self.views, self.args.views)
+        self.oviews = {}
+        for view_name in self.views:
+            self.oviews[view_name] = RawView(view_name, self.args)
+            
+            
+    def iter_views(self):
+        for view in self.views:
+            yield self.oviews[view]
+
+        
+    def execute_command(self):
+        print("Processing views in schema:%s from data in schema:%s..." % (
+                self.args.view_schema, self.args.data_schema)
+        )
+        command = self.args.command
+        for v in self.iter_views():
+            if command == 'list':
+                print(v.name)
+            elif command == 'info':
+                print(v)
+            else:
+                if command in ('drop', 'create'):
+                    self.drop_view(v)
+                if command == 'create':
+                    self.create_view(v)
+
+                    
+
+    def drop_view(self, view):
+        print('DROP [%s]' % (view.view_name))
+        try:
+            self.cur.execute(view.drop())
+            self.connection.commit()
+        except psycopg2.errors.WrongObjectType:
+            self.cur.close()
+            self.connection.close()
+            self.connect_db()
+            self.cur.execute(view.drop(materialized=True))
+            self.connection.commit()
+            
+
+
+    def create_view(self, view):
+        if view.active:
+            status = 'MATERIALIZED' if view.materialized else 'VIEW'
+            self.cur.execute(view.create())
+            if self.args.post_sql:
+                self.cur.execute(view.translate_sql(self.args.post_sql))
+            self.connection.commit()
+
+        else:
+            status = 'SKIP'
+        print('%s [%s]' % (status, view.view_name))
+
+
         
 class RawView(object):
 
-    def __init__(self, name, options, db_config='osmosis_pg'):
+    def __init__(self, name, options):
         self.name = name
-        self.db_config = db_config
+        self.db_config = options.db_config
         self.filename = self.build_ini_filename()
-        self.view_schema = options['view_schema']
-        self.data_schema = options['data_schema']
-        self.materialized = self.get_bool_from_str(options['materialized'])
+        self.view_schema = options.view_schema
+        self.data_schema = options.data_schema
+        self.materialized = self.get_bool_from_str(options.materialized)
         try:
             self.load_from_ini(self.filename)
         except Exception as e:
             raise Exception("Error parsing %s\n%s" % (self.filename, str(e)))
 
+
+    def __str__(self):
+        tags = ', '.join(self.tags)
+        return f"""
+Nome    : {self.name}
+Attiva  : {self.active}
+Tags    : {tags}
+Extra   : {self.extra_fields}
+
+"""
 
     @classmethod
     def get_view_folder(self):
@@ -106,7 +272,7 @@ class RawView(object):
         self.geom_class=config['geom_class']
         if not self.geom_class in ('node', 'way'):
             raise Exception('geom_class must be "node" or "way"')
-        conf = DB_CONF[self.db_config][self.geom_class]
+        conf = self.db_config[self.geom_class]
 
         self.geom_table = conf['geom_table']
         self.tags_table = conf['tags_table']
@@ -218,8 +384,9 @@ class RawView(object):
         return ''
 
 
-    def drop(self, materialized=''):
-        return 'drop %s view if exists %s.%s cascade;' % (materialized, self.view_schema, self.view_name)
+    def drop(self, materialized=False):
+        mat = 'materialized' if materialized else ''
+        return 'drop {mat} view if exists {schema}.{view} cascade; '.format(mat=mat, schema=self.view_schema, view=self.view_name)
 
 
     def translate_sql(self, sql):
@@ -228,78 +395,10 @@ class RawView(object):
             view_name='%s.%s' % (self.view_schema, self.view_name)
         )
 
-def db_connect(conf):
-    connection = psycopg2.connect(**conf)
-    cur = connection.cursor()
-    return (cur, connection)
-
-
-def make_views(conf, view_mask):
-    connection_options = conf['connect']
-    (cur, connection) = db_connect(connection_options)
-    options = conf['options']
-    print("Creating views in schema:%s from data in schema:%s..." % (options['view_schema'], options['data_schema']))
-    views = list(RawView.list_view_files())
-    print(views)
-    if view_mask:
-        views = fnmatch.filter(views, view_mask)
-        print(views)
-  
-    for viewfile in views:
-        view = RawView(viewfile, options, db_config='osmosis_pg')
-        if view.active:
-            # "drop view" won't work on a materialized view
-            try:
-                print(view.drop())
-                cur.execute(view.drop())
-            except:
-                connection.rollback()
-                cur.close()
-                connection.close()
-                (cur, connection) = db_connect(connection_options)
-                cur.execute(view.drop('materialized'))
-            status = 'MATERIALIZED' if view.materialized else 'VIEW'
-            cur.execute(view.create())
-            if options['post_sql']:
-                cur.execute(view.translate_sql(options['post_sql']))
-        else:
-            status = 'skip'
-        connection.commit()
-        print('%s [%s]' % (view.view_name, status))
-
 
 
 if __name__ == '__main__':
-
-    try:
-        dbconf =  {
-            'connect' : {
-                'host'       : os.environ['DB_HOST'],
-                'port'       : os.environ.get('DB_PORT', '5432'),
-                'database'   : os.environ['DB_NAME'],
-                'user'       : os.environ['DB_USERNAME'],
-                'password'   : os.environ['DB_PASSWORD'],
-            },
-            'options' : {
-                'post_sql'       : os.environ.get('POST_SQL', ''),
-                'materialized'   : os.environ.get('MATERIALIZED', 0),
-                'data_schema'    : os.environ.get('DB_SCHEMA', 'public'),
-                'view_schema'    : os.environ.get('DB_VIEW_SCHEMA', 'osm_views'),
-            }
-        }
-        
-        view_mask = sys.argv[1] if len(sys.argv) > 1 else None
-        # TODO parseargs
-        #   - view sql
-        #   - refresh materialized
-        #   - drop / (re)create
-        make_views(dbconf, view_mask)
-
-    except KeyError as e:
-        print("You need to export DB_* variables before calling this script.")
-        print("%s environment variable not found." % str(e))
-        quit()
-        
-    except Exception as e:
-        print(str(e))
     
+    app = App()
+    app.run()
+
