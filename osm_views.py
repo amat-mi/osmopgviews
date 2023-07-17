@@ -76,6 +76,8 @@ DB_CONF_OSMOSIS = {
 
 VIEWS_INI_FOLDER=''
 DEFAULT_SCHEMA=''
+DEFAULT_GRANT_SELECT=''
+DEFAULT_OWNER=''
 
 try:
     from localsettings import *
@@ -153,10 +155,10 @@ class App(object):
         parser.add_argument('--post-sql', action='store', default='', 
             dest='post_sql', help="Codice SQL da eseguire al termine delle operazioni"
         )
-        parser.add_argument('--owner', action='store', default='', 
+        parser.add_argument('--owner', action='store', default=DEFAULT_OWNER, 
             dest='owner', help="Proprietario della vista"
         )
-        parser.add_argument('--grant-select', action='store', default='', 
+        parser.add_argument('--grant-select', action='store', default=DEFAULT_GRANT_SELECT, 
             dest='grant_select', help="CSV dei role a cui dare il select"
         )
         
