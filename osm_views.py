@@ -153,6 +153,12 @@ class App(object):
         parser.add_argument('--post-sql', action='store', default='', 
             dest='post_sql', help="Codice SQL da eseguire al termine delle operazioni"
         )
+        parser.add_argument('--owner', action='store', default='', 
+            dest='owner', help="Proprietario della vista"
+        )
+        parser.add_argument('--grant-select', action='store', default='', 
+            dest='grant_select', help="CSV dei role a cui dare il select"
+        )
         
         self.args, self.extras = parser.parse_known_args()
         self.args.__dict__['db_config'] = DB_CONF_SPATIALITE if self.args.spatialite else DB_CONF_OSMOSIS
@@ -207,7 +213,9 @@ class App(object):
                 print(v)
             else:
                 if command == 'sql':
-                    print(v.create())
+                    print(v.create() + ';')
+                    print(v.set_owner() + ';')
+                    print(v.set_grant_select() + ';')
                 else:
                     if command in ('drop', 'create'):
                         self.drop_view(v)
@@ -234,10 +242,15 @@ class App(object):
         if view.active:
             status = 'MATERIALIZED' if view.materialized else 'VIEW'
             self.cur.execute(view.create())
+            set_owner = view.set_owner()
+            if set_owner:
+                self.cur.execute(set_owner)
+            set_grant_select = view.set_grant_select()
+            if set_grant_select:
+                self.cur.execute(set_grant_select)
             if self.args.post_sql:
                 self.cur.execute(view.translate_sql(self.args.post_sql))
             self.connection.commit()
-
         else:
             status = 'SKIP'
         print('%s [%s]' % (status, view.view_name))
@@ -253,6 +266,8 @@ class RawView(object):
         self.view_schema = options.view_schema
         self.data_schema = options.data_schema
         self.materialized = self.get_bool_from_str(options.materialized)
+        self.owner = options.owner
+        self.grant_select = options.grant_select
         try:
             self.load_from_ini(self.filename)
         except Exception as e:
@@ -416,6 +431,18 @@ Extra   : {self.extra_fields}
     def create(self):
         if self.active:
             return "create %s %s.%s as (%s);" % (self.view_type(), self.view_schema, self.view_name, self.build_sql())
+        return ''
+    
+    
+    def set_owner(self):
+        if self.owner:
+            return "alter table %s.%s owner to %s" % (self.view_schema, self.view_name, self.owner)
+        return ''
+
+
+    def set_grant_select(self):
+        if self.grant_select:
+            return "grant select on table %s.%s to %s" % (self.view_schema, self.view_name, self.grant_select)
         return ''
 
 
