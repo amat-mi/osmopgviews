@@ -1,6 +1,19 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 
+"""
+Usare localsettings.py per condifurare le seguenti variabili:
+
+# Se non definita, cerca nella cartella views del progetto  
+VIEWS_INI_FOLDER='/mnt/N/CollaborazioneDiretta/sis/osm_views'
+
+La configurazione DB va lanciata con
+
+. dbconnect
+Selezionando osmosis come database
+
+"""
+
 import os.path
 import glob
 import psycopg2
@@ -9,6 +22,14 @@ import argparse
 
 
 """
+
+# TODO: introdurre la possibilità di aggiungere i tag che provengono dalle relazioni
+[RELATION1]
+rel_name=<fied_prefix>
+rel_type=
+rel_role=
+rel_tags=tags restituiti: <prefix>__<tag>
+
 # Rebuild all
 ./osm_views
 
@@ -51,7 +72,15 @@ DB_CONF_OSMOSIS = {
         },
 }
 
-        
+
+VIEWS_INI_FOLDER=''
+
+try:
+    from localsettings import *
+except ImportError:
+    pass
+
+
 
 class App(object):
     """
@@ -240,7 +269,7 @@ Extra   : {self.extra_fields}
 
     @classmethod
     def get_view_folder(self):
-        return os.path.join(os.path.abspath(os.path.dirname(__file__)), 'views')
+        return VIEWS_INI_FOLDER or os.path.join(os.path.abspath(os.path.dirname(__file__)), 'views')
 
 
     @classmethod
