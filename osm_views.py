@@ -6,6 +6,7 @@ Usare localsettings.py per condifurare le seguenti variabili:
 
 # Se non definita, cerca nella cartella views del progetto  
 VIEWS_INI_FOLDER='/mnt/N/CollaborazioneDiretta/sis/osm_views'
+DEFAULT_SCHEMA='osm_views'
 
 La configurazione DB va lanciata con
 
@@ -74,6 +75,7 @@ DB_CONF_OSMOSIS = {
 
 
 VIEWS_INI_FOLDER=''
+DEFAULT_SCHEMA=''
 
 try:
     from localsettings import *
@@ -139,7 +141,7 @@ class App(object):
         parser.add_argument('--materialized', action='store_true',
             dest='materialized', help="Utilizza viste materializzate"
         )
-        parser.add_argument('--view_schema', action='store', default='osm_views',
+        parser.add_argument('--view_schema', action='store', default=(DEFAULT_SCHEMA or 'osm_views'),
             dest='view_schema', help="Nome dello schema delle viste"
         )
         parser.add_argument('--data_schema', action='store', default='public',
@@ -163,7 +165,7 @@ class App(object):
                     'host'       : os.environ['DB_HOST'],
                     'port'       : os.environ.get('DB_PORT', '5432'),
                     'database'   : os.environ['DB_NAME'],
-                    'user'       : os.environ['DB_USERNAME'],
+                    'user'       : os.environ['DB_USER'],
                     'password'   : os.environ['DB_PASSWORD'],
             }
             self.connection = psycopg2.connect(**self.db_conn_config)
