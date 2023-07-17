@@ -141,10 +141,10 @@ class App(object):
         parser.add_argument('--materialized', action='store_true',
             dest='materialized', help="Utilizza viste materializzate"
         )
-        parser.add_argument('--view_schema', action='store', default=(DEFAULT_SCHEMA or 'osm_views'),
+        parser.add_argument('--view-schema', action='store', default=(DEFAULT_SCHEMA or 'osm_views'),
             dest='view_schema', help="Nome dello schema delle viste"
         )
-        parser.add_argument('--data_schema', action='store', default='public',
+        parser.add_argument('--data-schema', action='store', default='public',
             dest='data_schema', help="Nome dello schema che contiene i dati osmosis"
         )
         parser.add_argument('--views', action='store', default='*', 
